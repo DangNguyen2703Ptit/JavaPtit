@@ -1,0 +1,1 @@
+{"name":"Local: bscusc","url":"c:\\JAVA\\bscusc.java","tests":[{"id":1789542187088,"input":"2\n3 4\n4 5\n","output":"12 1\n20 1"}],"interactive":false,"memoryLimit":1024,"timeLimit":3000,"srcPath":"c:\\JAVA\\bscusc.java","group":"local","local":true}
