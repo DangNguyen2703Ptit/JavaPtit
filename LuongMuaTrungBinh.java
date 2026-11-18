@@ -45,6 +45,8 @@ public class LuongMuaTrungBinh {
             if ( check== false ){
                 x.id=String.format("T%02d",ds.size()+1);
                 x.thoigian=x.getTime();
+                x.sum=x.luongmua;
+                ds.add(x);
             }
 
         }
