@@ -39,6 +39,7 @@ public class LuongMuaTrungBinh {
                 if ( x.name.equals(y) == true ){
                     y.sum+=x.luongmua;
                     y.thoigian+=x.getTime();
+                    check=true;
                 }
             }
         }
