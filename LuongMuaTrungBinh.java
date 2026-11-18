@@ -33,10 +33,11 @@ public class LuongMuaTrungBinh {
         while( n-- >0){
             Tram x= new Tram();
             x.nhap(sc);
+            boolean check = false;
             for ( int i=0;i<ds.size();i++){
                 Tram y= ds.get(i);
                 if ( x.name.equals(y) == true ){
-                    
+
                 }
             }
         }
