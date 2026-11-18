@@ -47,9 +47,9 @@ public class LuongMuaTrungBinh {
                 x.thoigian=x.getTime();
                 x.sum=x.luongmua;
                 ds.add(x);
-            }
-
+            } 
         }
+        
         sc.close();
     }
 }
