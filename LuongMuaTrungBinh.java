@@ -33,7 +33,9 @@ public class LuongMuaTrungBinh {
         while( n-- >0){
             Tram x= new Tram();
             x.nhap(sc);
-            
+            for ( int i=0;i<ds.size();i++){
+                
+            }
         }
         sc.close();
     }
