@@ -32,7 +32,7 @@ public class LuongMuaTrungBinh {
         ArrayList<Tram> ds= new ArrayList<>();
         while( n-- >0){
             Tram x= new Tram();
-
+            
         }
         sc.close();
     }
