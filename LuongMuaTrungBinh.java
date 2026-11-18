@@ -42,7 +42,10 @@ public class LuongMuaTrungBinh {
                     check=true;
                 }
             }
-            
+            if ( check== false ){
+                x.id=String.format("T%02d",ds.size()+1);
+                x.thoigian=x.getTime();
+            }
 
         }
         sc.close();
