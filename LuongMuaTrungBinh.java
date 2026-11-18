@@ -1,7 +1,6 @@
 import java.util.*;
 class Tram{
-    static int stt=1;
-    String id=String.format("T%02d",stt++);
+    String id="";
     String name="",start="",end="";
     double luongmua=0,thoigian=0,sum=0;
     public Tram(){}
@@ -33,7 +32,7 @@ public class LuongMuaTrungBinh {
         ArrayList<Tram> ds= new ArrayList<>();
         while( n-- >0){
             Tram x= new Tram();
-            
+
         }
         sc.close();
     }
