@@ -42,6 +42,7 @@ public class LuongMuaTrungBinh {
                     check=true;
                 }
             }
+            
         }
         sc.close();
     }
