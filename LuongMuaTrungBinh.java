@@ -34,7 +34,10 @@ public class LuongMuaTrungBinh {
             Tram x= new Tram();
             x.nhap(sc);
             for ( int i=0;i<ds.size();i++){
-                
+                Tram y= ds.get(i);
+                if ( x.name.equals(y) == true ){
+                    
+                }
             }
         }
         sc.close();
