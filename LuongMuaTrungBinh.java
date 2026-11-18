@@ -12,6 +12,7 @@ class Tram{
         return y-x;
     }
     
+
 }
 public class LuongMuaTrungBinh {
     public static void main(String[] args){
