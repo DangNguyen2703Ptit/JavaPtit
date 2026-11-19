@@ -21,7 +21,7 @@ class Tram{
     }
     @Override
     public String toString() {
-        return id+" "+name+" "+getTB();
+        return id+" "+name+" "+String.format("%.2f",getTB()+1e-9);
     }
 
 }
@@ -36,7 +36,7 @@ public class LuongMuaTrungBinh {
             boolean check = false;
             for ( int i=0;i<ds.size();i++){
                 Tram y= ds.get(i);
-                if ( x.name.equals(y) == true ){
+                if ( x.name.equals(y.name) == true ){
                     y.sum+=x.luongmua;
                     y.thoigian+=x.getTime();
                     check=true;
@@ -49,7 +49,7 @@ public class LuongMuaTrungBinh {
                 ds.add(x);
             } 
         }
-        
+        for ( Tram i : ds ) System.out.println(i);
         sc.close();
     }
 }
