@@ -23,7 +23,7 @@ public class LietKeSinhVienTheoLop {
             x.nhap(sc);
             ds.add(x);
         }
-        int k=sc.nextInt();
+        int k=Integer.parseInt(sc.nextLine());
         while( k-- >0 ){
             String search= sc.nextLine();
             System.out.println("DANH SACH SINH VIEN LOP "+search+":");
