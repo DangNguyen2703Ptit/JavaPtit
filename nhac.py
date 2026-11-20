@@ -7,14 +7,14 @@ import ctypes
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# TÙY CHỈNH BEAT & HIỆU ỨNG:
+# CẤU HÌNH NHẠY BEAT & DANH SÁCH HIỆU ỨNG:
 SMALL_BEAT = 1.15          # Ngưỡng beat nhỏ (vùng sáng hẹp)
 MID_BEAT = 1.35            # Ngưỡng beat vừa (vùng sáng trung bình)
-BIG_BEAT = 1.55            # Ngưỡng beat mạnh / drop (bung sáng toàn phím)
+BIG_BEAT = 1.50            # Ngưỡng beat mạnh / drop (bung sáng toàn phím)
 MIN_CMD_INTERVAL = 0.085   # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
-MODES = [6, 1, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-AUTO_SWITCH_ON_DROP = False
+# Giữ toàn bộ hiệu ứng tự sáng, bỏ 5 hiệu ứng chờ bấm phím (10..14)
+MODES = [6, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 18, 19, 20]
 # ==========================================
 
 VK_RCONTROL = 0xA3  # Phím Ctrl bên phải để đổi hiệu ứng
@@ -34,10 +34,11 @@ def send_cmd(h, payload):
     return h.read(64, timeout_ms=50)
 
 def set_led(h, mode, hue, switch_mode=False):
-    # Luôn khóa cứng brightness = 4, speed = 4, val = 255 (tối đa mọi lúc)
+    # Byte 11 = 0: Tắt Monochrome (RGB đa sắc)
+    # Brightness = 4, Speed = 4, Val = 255: Luôn sáng tối đa mọi lúc
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 1, 7, hue & 0xFF, 255, 255])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 0, 7, hue & 0xFF, 255, 255])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -86,8 +87,8 @@ try:
     mode_idx = 0
     hue = 0
     set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-    print(f"Dang bat nhac (Max 4 do sang & toc do) tu: {device['name']}")
-    print("Bam [Right Ctrl] de DOI HIEU UNG | Nhan Ctrl+C trong Terminal de dung.")
+    print(f"Dang chay RGB da sac (Max sang 4, da tat Monochrome) tu: {device['name']}")
+    print("Bam phim [Right Ctrl] de doi hieu ung | Nhan Ctrl+C trong Terminal de dung.")
     print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
 
     avg_energy = 100.0
@@ -99,6 +100,7 @@ try:
     while True:
         now = time.time()
 
+        # Bấm Right Ctrl để chuyển hiệu ứng
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
             mode_idx = (mode_idx + 1) % len(MODES)
             set_led(kb, MODES[mode_idx], hue, switch_mode=True)
@@ -123,25 +125,16 @@ try:
 
         if tier > 0 and (now >= hold_until or tier > current_tier) and (now - last_send_time >= MIN_CMD_INTERVAL):
             current_tier = tier
-            switched = False
-
             if tier == 3:
                 hue = (hue + random.randint(85, 140)) % 256
-                if AUTO_SWITCH_ON_DROP and (now - last_switch_time >= 1.5):
-                    mode_idx = (mode_idx + 1) % len(MODES)
-                    switched = True
-                    last_switch_time = now
-                    print(f"-> Drop manh! Tu dong doi sang mode = {MODES[mode_idx]}")
-                set_led(kb, MODES[mode_idx], hue, switch_mode=switched)
                 hold_until = now + 0.42
             elif tier == 2:
                 hue = (hue + 38) % 256
-                set_led(kb, MODES[mode_idx], hue)
                 hold_until = now + 0.22
             else:
                 hue = (hue + 20) % 256
-                set_led(kb, MODES[mode_idx], hue)
                 hold_until = now + 0.11
+            set_led(kb, MODES[mode_idx], hue)
             last_send_time = now
 
         elif current_tier > 0 and now >= hold_until and (now - last_send_time >= MIN_CMD_INTERVAL):
