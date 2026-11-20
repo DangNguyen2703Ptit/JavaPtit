@@ -9,15 +9,15 @@ import pyaudiowpatch as pyaudio
 # ==========================================
 # TÙY CHỈNH TỐC ĐỘ CHUYỂN HIỆU ỨNG & BEAT:
 AUTO_SWITCH_ON_DROP = True     # Tự nhảy hiệu ứng ngay khi có tiếng bass/drop
-DROP_SWITCH_COOLDOWN = 0.6     # Khoảng cách tối thiểu giữa 2 lần đổi theo beat (giây) -> càng nhỏ đổi càng nhanh
+DROP_SWITCH_COOLDOWN = 0.6     # Khoảng cách tối thiểu giữa 2 lần đổi theo beat (giây)
 AUTO_SWITCH_SECONDS = 4.0      # Tự đổi sang hiệu ứng khác sau mỗi 4 giây nếu nhạc êm
 
 SMALL_BEAT = 1.15              # Ngưỡng beat nhỏ
 MID_BEAT = 1.35                # Ngưỡng beat vừa
-BIG_BEAT = 1.48                # Hạ nhẹ xuống 1.48 để bắt drop nhạy và đổi hiệu ứng dồn dập hơn
+BIG_BEAT = 1.48                # Ngưỡng beat mạnh / drop
 MIN_CMD_INTERVAL = 0.085       # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
-MODES = [6, 1, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+MODES = [6, 1, 4, 5, 7, 8, 9]
 # ==========================================
 
 VK_RCONTROL = 0xA3  # Phím Ctrl bên phải để đổi hiệu ứng thủ công
@@ -37,10 +37,10 @@ def send_cmd(h, payload):
     return h.read(64, timeout_ms=50)
 
 def set_led(h, mode, hue, switch_mode=False):
-    # Luôn khóa cứng brightness = 4, speed = 4, val = 255
+    # Byte thứ 11 đặt = 0 để TẮT Monochrome (chạy đa sắc RGB), brightness = 4, speed = 4
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 1, 7, hue & 0xFF, 255, 255])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 0, 7, hue & 0xFF, 255, 255])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -89,7 +89,7 @@ try:
     mode_idx = 0
     hue = 0
     set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-    print(f"Dang chay chuyen hieu ung nhanh theo nhac tu: {device['name']}")
+    print(f"Dang chay RGB da sac (da tat Monochrome) theo nhac tu: {device['name']}")
     print("Bam [Right Ctrl] de doi ngay | Nhan Ctrl+C trong Terminal de dung.")
     print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
 
@@ -139,7 +139,6 @@ try:
 
             if tier == 3:
                 hue = (hue + random.randint(85, 140)) % 256
-                # 3. Nhảy ngay sang hiệu ứng khác mỗi khi có cú bass/drop (cách nhau 0.6s)
                 if AUTO_SWITCH_ON_DROP and (now - last_switch_time >= DROP_SWITCH_COOLDOWN):
                     mode_idx = (mode_idx + 1) % len(MODES)
                     switched = True
