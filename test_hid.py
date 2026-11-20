@@ -4,10 +4,14 @@ import random
 import ctypes
 
 # ==========================================
-# TÙY CHỈNH NHANH:
+# CẤU HÌNH CƠ BẢN:
 BRIGHTNESS = 4   # Độ sáng: 1 đến 4
-SPEED = 4        # Tốc độ nhịp Bloom: 1 (chậm) đến 5 (nhanh)
+SPEED = 4        # Tốc độ hiệu ứng: 1 đến 5
+# Danh sách các mã hiệu ứng có sẵn trên TK61 Pro (bạn có thể xóa bớt số nào thấy tắt đèn)
+MODES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 # ==========================================
+
+VK_RCONTROL = 0xA3  # Phím Ctrl bên phải dùng để đổi hiệu ứng
 
 def open_kb():
     for d in hid.enumerate(0x36AE, 0xFEAD):
@@ -23,36 +27,50 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_bloom_color(h, hue):
-    send_cmd(h, [11, 11, 0, 0, 1, 0, 6, BRIGHTNESS, SPEED, 1, 1, 7, hue & 0xFF, 255, 255])
+def apply_effect(h, mode, hue, switch_mode=False):
+    # Chỉ gửi lệnh 22 khi đổi sang hiệu ứng mới để không làm giật nhịp đang chạy
+    if switch_mode:
+        send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, BRIGHTNESS, SPEED, 1, 1, 7, hue & 0xFF, 255, 255])
 
-def any_key_pressed():
+def check_keys():
     user32 = ctypes.windll.user32
+    switch_effect = bool(user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001)
+    any_key = False
     for vk in range(8, 255):
+        if vk in (0x11, VK_RCONTROL):  # Bỏ qua phím Ctrl để không tính trùng
+            continue
         if user32.GetAsyncKeyState(vk) & 0x0001:
-            return True
-    return False
+            any_key = True
+    return switch_effect, any_key
 
 kb = open_kb()
 if not kb:
     print("Khong tim thay ban phim! Hay tat SDTech Options truoc.")
 else:
+    mode_idx = MODES.index(6)  # Bắt đầu từ hiệu ứng Bloom (6)
     hue = random.randint(0, 255)
-    send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
-    set_bloom_color(kb, hue)
-    print("Dang chay Bloom + doi mau khi bam phim... Nhan Ctrl+C de dung.")
+    apply_effect(kb, MODES[mode_idx], hue, switch_mode=True)
+
+    print("Dang chay! Go phim bat ky de DOI MAU | Bam [Right Ctrl] de DOI HIEU UNG.")
+    print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
 
     try:
         while True:
-            if any_key_pressed():
-                # Nhảy góc màu từ 55 đến 130 để phím sau luôn khác hẳn màu phím trước
+            switch_effect, any_key = check_keys()
+            if switch_effect:
+                mode_idx = (mode_idx + 1) % len(MODES)
+                current_mode = MODES[mode_idx]
+                apply_effect(kb, current_mode, hue, switch_mode=True)
+                print(f"-> Da chuyen sang hieu ung: mode = {current_mode}")
+                time.sleep(0.2)
+            elif any_key:
                 hue = (hue + random.randint(55, 130)) % 256
-                set_bloom_color(kb, hue)
+                apply_effect(kb, MODES[mode_idx], hue, switch_mode=False)
                 time.sleep(0.1)
             time.sleep(0.01)
     except KeyboardInterrupt:
-        send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
-        send_cmd(kb, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 1, 7, 255, 255, 60])
+        apply_effect(kb, 6, 255, switch_mode=True)
         print("Da khoi phuc den goc!")
     finally:
         kb.close()
