@@ -9,7 +9,7 @@ import pyaudiowpatch as pyaudio
 # ==========================================
 # TÙY CHỈNH NHẠY NHẠC & DANH SÁCH HIỆU ỨNG:
 SENSITIVITY = 1.22       # Độ nhạy bắt beat (càng nhỏ càng dễ bắt nhịp)
-MIN_BEAT_GAP = 0.16      # Nhịp cập nhật theo beat (giây)
+MIN_BEAT_GAP = 1.0      # Nhịp cập nhật theo beat (giây)
 MODES = [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 # ==========================================
 
