@@ -2,13 +2,13 @@ import hid
 import time
 import math
 import struct
-import random
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# TÙY CHỈNH ĐỘ NHẠY NHẠC:
-SENSITIVITY = 1.35       # Giảm xuống 1.15 nếu nhạc nhẹ khó bắt nhịp; tăng lên 1.6 nếu nháy quá dày
-MIN_CMD_INTERVAL = 0.09  # Giới hạn tốc độ gửi lệnh (giây) để mạch TK61 Pro không bị nghẽn
+# TÙY CHỈNH NHẠC & CẦU VỒNG:
+SENSITIVITY = 1.30       # Độ nhạy bắt nhịp bass (giảm xuống 1.15 nếu nhạc nhẹ)
+RAINBOW_SPEED = 4        # Tốc độ trôi 7 sắc cầu vồng (tăng lên 7-10 nếu muốn đổi màu nhanh hơn)
+MIN_CMD_INTERVAL = 0.09  # Giới hạn nhịp gửi lệnh an toàn cho chip TK61 Pro
 # ==========================================
 
 def open_kb():
@@ -25,8 +25,9 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_led(h, hue, brightness=4, val=255):
-    send_cmd(h, [11, 11, 0, 0, 1, 0, 6, brightness, 4, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
+def set_led(h, hue, val=255):
+    # Luôn giữ brightness = 4 (mức sáng tối đa của mạch) để màu luôn rực
+    send_cmd(h, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -71,14 +72,13 @@ try:
     )
 
     send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
-    hue = random.randint(0, 255)
-    set_led(kb, hue, brightness=2, val=120)
-    print(f"Dang bat nhac tu: {device['name']}")
-    print("Hay bat mot bai nhac tren may tinh... Nhan Ctrl+C de dung.")
+    hue = 0
+    set_led(kb, hue, val=255)
+    print(f"Dang chay 7 sac cau vong theo nhac tu: {device['name']}")
+    print("Nhan Ctrl+C de dung.")
 
     avg_energy = 100.0
     last_send_time = 0.0
-    is_bright = False
 
     while True:
         data = stream.read(1024, exception_on_overflow=False)
@@ -89,18 +89,18 @@ try:
 
         if now - last_send_time >= MIN_CMD_INTERVAL:
             if rms > max(150.0, avg_energy * SENSITIVITY):
-                hue = (hue + random.randint(45, 115)) % 256
-                set_led(kb, hue, brightness=4, val=255)
-                last_send_time = now
-                is_bright = True
-            elif is_bright and rms < avg_energy * 0.85:
-                set_led(kb, hue, brightness=1, val=90)
-                last_send_time = now
-                is_bright = False
+                # Có nhịp bass: đẩy màu cầu vồng tiến nhanh hơn và bừng sáng 100%
+                hue = (hue + RAINBOW_SPEED * 3) % 256
+                set_led(kb, hue, val=255)
+            else:
+                # Nhạc nền / đoạn nghỉ: vẫn sáng rõ (val=185) và trôi đều 7 sắc cầu vồng
+                hue = (hue + RAINBOW_SPEED) % 256
+                set_led(kb, hue, val=185)
+            last_send_time = now
 
 except KeyboardInterrupt:
     send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
-    set_led(kb, 255, brightness=4, val=60)
+    set_led(kb, 255, val=255)
     print("\nDa dung va khoi phuc den goc!")
 finally:
     if 'stream' in locals():
