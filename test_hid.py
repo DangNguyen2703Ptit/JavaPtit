@@ -19,18 +19,24 @@ kb = open_kb()
 if not kb:
     print("Khong tim thay ban phim!")
 else:
-    print("Dang chay cau vong... Nhan Ctrl+C de dung.")
+    # 1. Khoi phuc ngay cau hinh goc de bat sang lai den
+    send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
+    send_cmd(kb, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 1, 7, 255, 255, 60])
+    print("Da bat lai den goc! Dang quet thu cac che do tu 1 den 15...")
+
     try:
-        hue = 0
-        while True:
-            # Đổi mode = 2 (Sáng tĩnh) và singleColorIndex = 0 (Dùng màu HSV tùy chỉnh)
-            data = [11, 11, 0, 0, 1, 0, 2, 4, 4, 1, 1, 0, hue, 255, 255]
-            send_cmd(kb, data)
-            hue = (hue + 4) % 256
-            time.sleep(0.03)
+        # 2. Quet tung mode de xem so may la che do sang tinh doi mau
+        for mode in range(1, 16):
+            print(f"Dang thu mode = {mode} (Quan sat den tren ban phim)...")
+            send_cmd(kb, [22, 0, 0, 0, 1, 0, mode])
+            for hue in [0, 85, 170]:  # Đỏ -> Xanh lá -> Xanh dương
+                send_cmd(kb, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 1, 7, hue, 255, 255])
+                time.sleep(0.4)
     except KeyboardInterrupt:
-        # Khi bấm Ctrl+C, tự động trả về hiệu ứng gốc (mode = 6) của bàn phím
-        send_cmd(kb, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 0, 7, 255, 255, 255])
-        print("Da dung va khoi phuc den goc!")
+        pass
     finally:
+        # Tra lai hieu ung goc sau khi quet xong
+        send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
+        send_cmd(kb, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 1, 7, 255, 255, 60])
+        print("Hoan tat!")
         kb.close()
