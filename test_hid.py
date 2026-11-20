@@ -1,17 +1,15 @@
 import hid
 import time
+import math
+import struct
 import random
-import ctypes
+import pyaudiowpatch as pyaudio
 
 # ==========================================
-# CẤU HÌNH CƠ BẢN:
-BRIGHTNESS = 4   # Độ sáng: 1 đến 4
-SPEED = 4        # Tốc độ hiệu ứng: 1 đến 5
-# Danh sách các mã hiệu ứng có sẵn trên TK61 Pro (bạn có thể xóa bớt số nào thấy tắt đèn)
-MODES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+# TÙY CHỈNH ĐỘ NHẠY NHẠC:
+SENSITIVITY = 1.35   # Giảm xuống 1.15 nếu nhạc nhẹ khó bắt nhịp; tăng lên 1.6 nếu nháy quá dày
+MIN_CMD_INTERVAL = 0.09  # Giới hạn tốc độ gửi lệnh (giây) để mạch TK61 Pro không bị nghẽn
 # ==========================================
-
-VK_RCONTROL = 0xA3  # Phím Ctrl bên phải dùng để đổi hiệu ứng
 
 def open_kb():
     for d in hid.enumerate(0x36AE, 0xFEAD):
@@ -27,50 +25,84 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def apply_effect(h, mode, hue, switch_mode=False):
-    # Chỉ gửi lệnh 22 khi đổi sang hiệu ứng mới để không làm giật nhịp đang chạy
-    if switch_mode:
-        send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, BRIGHTNESS, SPEED, 1, 1, 7, hue & 0xFF, 255, 255])
+def set_led(h, hue, brightness=4, val=255):
+    send_cmd(h, [11, 11, 0, 0, 1, 0, 6, brightness, 4, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
 
-def check_keys():
-    user32 = ctypes.windll.user32
-    switch_effect = bool(user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001)
-    any_key = False
-    for vk in range(8, 255):
-        if vk in (0x11, VK_RCONTROL):  # Bỏ qua phím Ctrl để không tính trùng
-            continue
-        if user32.GetAsyncKeyState(vk) & 0x0001:
-            any_key = True
-    return switch_effect, any_key
+def calc_rms(raw_bytes):
+    count = len(raw_bytes) // 2
+    if count == 0:
+        return 0.0
+    samples = struct.unpack(f"<{count}h", raw_bytes[:count * 2])
+    sum_sq = sum(s * s for s in samples)
+    return math.sqrt(sum_sq / count)
+
+def get_loopback_device(p):
+    wasapi = p.get_host_api_info_by_type(pyaudio.paWASAPI)
+    default_speakers = p.get_device_info_by_index(wasapi["defaultOutputDevice"])
+    if not default_speakers["isLoopback"]:
+        for loopback in p.get_loopback_device_info_generator():
+            if default_speakers["name"] in loopback["name"]:
+                return loopback
+    return default_speakers
 
 kb = open_kb()
 if not kb:
     print("Khong tim thay ban phim! Hay tat SDTech Options truoc.")
-else:
-    mode_idx = MODES.index(6)  # Bắt đầu từ hiệu ứng Bloom (6)
+    exit()
+
+p = pyaudio.PyAudio()
+try:
+    device = get_loopback_device(p)
+    channels = device["maxInputChannels"]
+    rate = int(device["defaultSampleRate"])
+
+    stream = p.open(
+        format=pyaudio.paInt16,
+        channels=channels,
+        rate=rate,
+        input=True,
+        input_device_index=device["index"],
+        frames_per_buffer=1024
+    )
+
+    send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
     hue = random.randint(0, 255)
-    apply_effect(kb, MODES[mode_idx], hue, switch_mode=True)
+    set_led(kb, hue, brightness=2, val=120)
+    print(f"Dang bat nhac tu: {device['name']}")
+    print("Hay bat mot bai nhac tren may tinh... Nhan Ctrl+C de dung.")
 
-    print("Dang chay! Go phim bat ky de DOI MAU | Bam [Right Ctrl] de DOI HIEU UNG.")
-    print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
+    avg_energy = 100.0
+    last_send_time = 0.0
+    is_bright = False
 
-    try:
-        while True:
-            switch_effect, any_key = check_keys()
-            if switch_effect:
-                mode_idx = (mode_idx + 1) % len(MODES)
-                current_mode = MODES[mode_idx]
-                apply_effect(kb, current_mode, hue, switch_mode=True)
-                print(f"-> Da chuyen sang hieu ung: mode = {current_mode}")
-                time.sleep(0.2)
-            elif any_key:
-                hue = (hue + random.randint(55, 130)) % 256
-                apply_effect(kb, MODES[mode_idx], hue, switch_mode=False)
-                time.sleep(0.1)
-            time.sleep(0.01)
-    except KeyboardInterrupt:
-        apply_effect(kb, 6, 255, switch_mode=True)
-        print("Da khoi phuc den goc!")
-    finally:
-        kb.close()
+    while True:
+        data = stream.read(1024, exception_on_overflow=False)
+        rms = calc_rms(data)
+
+        # Tự động cân bằng theo mức âm lượng to/nhỏ của máy tính
+        avg_energy = avg_energy * 0.92 + rms * 0.08
+        now = time.time()
+
+        if now - last_send_time >= MIN_CMD_INTERVAL:
+            # Khi có tiếng bass / nhịp trống vượt ngưỡng trung bình -> Đổi màu + Bừng sáng tối đa
+            if rms > max(150.0, avg_energy * SENSITIVITY):
+                hue = (hue + random.randint(45, 115)) % 256
+                set_led(kb, hue, brightness=4, val=255)
+                last_send_time = now
+                is_bright = True
+            # Khi nhạc lắng xuống hoặc tạm dừng -> Hạ dịu độ sáng để tạo nhịp thở
+            elif is_bright and rms < avg_energy * 0.85:
+                set_led(kb, hue, brightness=1, val=90)
+                last_send_time = now
+                is_bright = False
+
+except KeyboardInterrupt:
+    send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
+    set_led(kb, 255, brightness=4, val=60)
+    print("\nDa dung va khoi phuc den goc!")
+finally:
+    if 'stream' in locals():
+        stream.stop_stream()
+        stream.close()
+    p.terminate()
+    kb.close()
