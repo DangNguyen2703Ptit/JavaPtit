@@ -19,14 +19,12 @@ kb = open_kb()
 if not kb:
     print("Khong tim thay ban phim!")
 else:
-    cfg = send_cmd(kb, [10])
-    print("Cau hinh goc:", cfg[:17])
-
     print("Dang chay cau vong... Nhan Ctrl+C de dung.")
     try:
         hue = 0
         while True:
-            data = [11, 11, 0, 0, 0, 0, 1, 4, 3, 0, 1, 0, hue, 255, 255]
+            # type=1, mode=1 (Static), brightness=4, speed=4, dir=1, color=1 (Monochrome), singleColorIndex=7 (HSV)
+            data = [11, 11, 0, 0, 1, 0, 1, 4, 4, 1, 1, 7, hue, 255, 255]
             send_cmd(kb, data)
             hue = (hue + 4) % 256
             time.sleep(0.03)
