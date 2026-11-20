@@ -38,7 +38,7 @@ public class TimThuKhoaCuaKyThi {
             ds.add(q);
         }
         Collections.sort(ds,(sv1,sv2)->{
-            if ( Double.compare(sv2.sum,sv1.sum) !=0 ){
+            if ( sv2.sum!=sv1.sum ){
                 return Double.compare(sv2.sum,sv1.sum);
             }
             return Integer.compare(sv1.id,sv2.id);
