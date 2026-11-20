@@ -9,8 +9,8 @@ import pyaudiowpatch as pyaudio
 # ==========================================
 # TÙY CHỈNH BẮT BEAT & TỐC ĐỘ THEO NHẠC:
 BEAT_SENSITIVITY = 1.38   # Độ nhạy bắt trống (giảm xuống 1.25 nếu nhạc nhẹ; tăng 1.5 nếu bắt thừa)
-MIN_CMD_INTERVAL = 0.065  # Tốc độ phản hồi cực nhanh (~15 lần/giây) nhưng vẫn an toàn cho chip
-MODES = [1, 6, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]  # Mặc định mode 1 (nháy tức thì không trễ)
+MIN_CMD_INTERVAL = 0.065  # Tốc độ phản hồi cực nhanh (~15 lần/giây) và an toàn cho chip
+MODES = [1, 6, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 # ==========================================
 
 VK_RCONTROL = 0xA3  # Bấm Right Ctrl để đổi hiệu ứng
@@ -29,21 +29,20 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_led(h, mode, hue, brightness=4, speed=4, val=255, switch_mode=False):
-    b = max(1, min(4, int(brightness)))
+def set_led(h, mode, hue, speed=4, switch_mode=False):
+    # Luôn khóa cứng brightness = 4 và val = 255 để đèn sáng hết cỡ mọi lúc
     s = max(1, min(4, int(speed)))
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, b, s, 1, 1, 7, hue & 0xFF, 255, int(val) & 0xFF])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, s, 1, 1, 7, hue & 0xFF, 255, 255])
 
 def calc_bass_rms(raw_bytes, channels, lp_state):
-    """Lọc thông thấp (Low-Pass) tách riêng tiếng trống Bass, loại bỏ tiếng hát & treble"""
+    """Lọc thông thấp tách riêng tiếng trống Bass, loại bỏ tiếng hát & treble"""
     count = len(raw_bytes) // 2
     if count == 0:
         return 0.0, lp_state
     samples = struct.unpack(f"<{count}h", raw_bytes[:count * 2])
     
-    # Lấy mono và lọc giữ lại tần số trầm (< 150Hz)
     alpha = 0.08
     sum_sq = 0.0
     step = max(1, channels)
@@ -81,7 +80,6 @@ try:
     channels = device["maxInputChannels"]
     rate = int(device["defaultSampleRate"])
 
-    # Giảm buffer xuống 512 (~10ms) để đèn đánh khớp ngay khoảnh khắc tiếng trống vang lên
     stream = p.open(
         format=pyaudio.paInt16,
         channels=channels,
@@ -91,17 +89,16 @@ try:
         frames_per_buffer=512
     )
 
-    mode_idx = 0  # mode = 1 phản hồi beat không độ trễ; bấm Right Ctrl để sang mode = 6 (Bloom)
+    mode_idx = 0
     hue = 0
-    set_led(kb, MODES[mode_idx], hue, brightness=2, speed=2, val=120, switch_mode=True)
-    print(f"Dang bat bass chuan tu: {device['name']}")
+    set_led(kb, MODES[mode_idx], hue, speed=2, switch_mode=True)
+    print(f"Dang bat bass chuan (sang toi da 100%) tu: {device['name']}")
     print("Bam [Right Ctrl] de DOI HIEU UNG | Nhan Ctrl+C trong Terminal de dung.")
 
     bass_avg = 80.0
     prev_bass = 0.0
     lp_state = 0.0
-    envelope = 0.0       # Độ nảy sáng giảm dần mượt theo nhịp
-    tempo_energy = 0.0   # Đo độ dồn dập của nhạc để chỉnh speed (1..4)
+    tempo_energy = 1.0
     last_send_time = 0.0
     last_beat_time = 0.0
     last_switch_time = 0.0
@@ -111,7 +108,7 @@ try:
 
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
             mode_idx = (mode_idx + 1) % len(MODES)
-            set_led(kb, MODES[mode_idx], hue, brightness=4, speed=4, val=255, switch_mode=True)
+            set_led(kb, MODES[mode_idx], hue, speed=4, switch_mode=True)
             print(f"-> Da chuyen sang hieu ung: mode = {MODES[mode_idx]}")
             last_switch_time = now
             last_send_time = now
@@ -119,37 +116,26 @@ try:
         data = stream.read(512, exception_on_overflow=False)
         bass, lp_state = calc_bass_rms(data, channels, lp_state)
 
-        # Cập nhật nền bass nhanh để bắt chính xác đỉnh xung (onset) của tiếng trống
         bass_avg = bass_avg * 0.85 + bass * 0.15
         is_rising = bass > prev_bass
         prev_bass = bass
 
-        # Phát hiện cú đánh trống mới (chỉ kích hoạt ngay sườn lên của tiếng bass)
         if is_rising and bass > 90.0 and bass > bass_avg * BEAT_SENSITIVITY and (now - last_beat_time >= 0.08):
             strength = min(2.0, bass / max(90.0, bass_avg))
-            envelope = 1.0  # Đẩy độ sáng nảy lên đỉnh 100%
-            tempo_energy = min(4.0, tempo_energy + 0.85)  # Tăng tốc độ hiệu ứng theo độ dồn dập
-
-            # Nhảy màu cầu vồng tương ứng độ mạnh cú đánh
+            tempo_energy = min(4.0, tempo_energy + 0.85)
             hue = (hue + int(35 * strength) + random.randint(15, 45)) % 256
             last_beat_time = now
         else:
-            # Hạ dần độ sáng và tốc độ mượt mà sau cú đánh (không khóa nhịp sau)
-            envelope = max(0.0, envelope - 0.08)
             tempo_energy = max(1.0, tempo_energy - 0.03)
             hue = (hue + int(tempo_energy * 1.5)) % 256
 
         if now - last_send_time >= MIN_CMD_INTERVAL:
-            # Tính brightness (1..4), val (95..255) và speed (1..4) trực tiếp theo nhịp nhạc
-            dyn_brightness = 1 + int(round(envelope * 3))
-            dyn_val = int(95 + envelope * 160)
             dyn_speed = int(round(tempo_energy))
-
-            set_led(kb, MODES[mode_idx], hue, brightness=dyn_brightness, speed=dyn_speed, val=dyn_val)
+            set_led(kb, MODES[mode_idx], hue, speed=dyn_speed)
             last_send_time = now
 
 except KeyboardInterrupt:
-    set_led(kb, 6, 255, brightness=4, speed=4, val=255, switch_mode=True)
+    set_led(kb, 6, 255, speed=4, switch_mode=True)
     print("\nDa dung va khoi phuc den goc!")
 finally:
     if 'stream' in locals():
