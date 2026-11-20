@@ -2,13 +2,15 @@ import hid
 import time
 import math
 import struct
+import random
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# TÙY CHỈNH NHẠC & CẦU VỒNG:
-SENSITIVITY = 1.30       # Độ nhạy bắt nhịp bass (giảm xuống 1.15 nếu nhạc nhẹ)
-RAINBOW_SPEED = 4        # Tốc độ trôi 7 sắc cầu vồng (tăng lên 7-10 nếu muốn đổi màu nhanh hơn)
-MIN_CMD_INTERVAL = 0.09  # Giới hạn nhịp gửi lệnh an toàn cho chip TK61 Pro
+# TÙY CHỈNH ĐỘ RỘNG & BIẾN ĐỔI BEAT:
+SENSITIVITY = 1.12       # Hạ xuống 1.12 để vùng bắt beat rộng và nhạy hơn
+BEAT_HOLD = 0.28         # Thời gian ngân sáng sau mỗi cú đập (giây) -> tăng nếu muốn đập rộng hơn
+RAINBOW_DRIFT = 5        # Tốc độ trôi 7 sắc cầu vồng nền
+MIN_CMD_INTERVAL = 0.09  # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 # ==========================================
 
 def open_kb():
@@ -25,9 +27,9 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_led(h, hue, val=255):
-    # Luôn giữ brightness = 4 (mức sáng tối đa của mạch) để màu luôn rực
-    send_cmd(h, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
+def set_led(h, hue, val=255, speed=4):
+    # Giữ brightness = 4 (sáng tối đa), thay đổi speed (1..5) và hue theo độ mạnh của nhạc
+    send_cmd(h, [11, 11, 0, 0, 1, 0, 6, 4, speed, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -73,34 +75,52 @@ try:
 
     send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
     hue = 0
-    set_led(kb, hue, val=255)
-    print(f"Dang chay 7 sac cau vong theo nhac tu: {device['name']}")
+    set_led(kb, hue, val=255, speed=4)
+    print(f"Dang bat beat rong & doi mau bien thien tu: {device['name']}")
     print("Nhan Ctrl+C de dung.")
 
     avg_energy = 100.0
     last_send_time = 0.0
+    beat_until = 0.0
+    beat_count = 0
 
     while True:
         data = stream.read(1024, exception_on_overflow=False)
         rms = calc_rms(data)
 
-        avg_energy = avg_energy * 0.92 + rms * 0.08
+        # Cập nhật mức năng lượng trung bình mượt để nhận diện cả đoạn cao trào lẫn đoạn lắng
+        avg_energy = avg_energy * 0.90 + rms * 0.10
         now = time.time()
+        ratio = rms / max(120.0, avg_energy)
+
+        # Kích hoạt vùng beat rộng khi âm lượng vượt ngưỡng
+        if rms > 120.0 and ratio >= SENSITIVITY:
+            beat_until = now + BEAT_HOLD
+            if now - last_send_time >= MIN_CMD_INTERVAL:
+                beat_count += 1
+                # Cứ mỗi 4 nhịp beat hoặc khi gặp cú drop mạnh (ratio > 1.45) -> nhảy màu tương phản lớn
+                if ratio > 1.45 or beat_count % 4 == 0:
+                    hue = (hue + random.randint(75, 140)) % 256
+                else:
+                    hue = (hue + random.randint(25, 50)) % 256
+                set_led(kb, hue, val=255, speed=5)
+                last_send_time = now
+                continue
 
         if now - last_send_time >= MIN_CMD_INTERVAL:
-            if rms > max(150.0, avg_energy * SENSITIVITY):
-                # Có nhịp bass: đẩy màu cầu vồng tiến nhanh hơn và bừng sáng 100%
-                hue = (hue + RAINBOW_SPEED * 3) % 256
-                set_led(kb, hue, val=255)
+            if now < beat_until:
+                # Đang trong vùng ngân của beat: giữ sáng rực 100% và trượt nhanh 7 sắc cầu vồng
+                hue = (hue + RAINBOW_DRIFT * 3) % 256
+                set_led(kb, hue, val=255, speed=5)
             else:
-                # Nhạc nền / đoạn nghỉ: vẫn sáng rõ (val=185) và trôi đều 7 sắc cầu vồng
-                hue = (hue + RAINBOW_SPEED) % 256
-                set_led(kb, hue, val=185)
+                # Ngoài vùng beat: trôi cầu vồng êm ở mức sáng rõ (val=190), tốc độ dịu lại (speed=2)
+                hue = (hue + RAINBOW_DRIFT) % 256
+                set_led(kb, hue, val=190, speed=2)
             last_send_time = now
 
 except KeyboardInterrupt:
     send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
-    set_led(kb, 255, val=255)
+    set_led(kb, 255, val=255, speed=4)
     print("\nDa dung va khoi phuc den goc!")
 finally:
     if 'stream' in locals():
