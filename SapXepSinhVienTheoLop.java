@@ -27,7 +27,7 @@ public class SapXepSinhVienTheoLop {
             ds.add(x);
         }
         Collections.sort(ds,(sv1,sv2)->{
-            if ( sv1.clas.equals(sv2.clas) ) return sv1.clas.compareTo(sv2.clas);
+            if ( sv1.clas.equals(sv2.clas)== false ) return sv1.clas.compareTo(sv2.clas);
             return sv1.clas.compareTo(sv2.clas);
         });
         for ( SinhVien i : ds ) System.out.println(i);
