@@ -7,14 +7,14 @@ import ctypes
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# CẤU HÌNH NHẠY BEAT & DANH SÁCH HIỆU ỨNG:
+# CẤU HÌNH NHẠY BEAT & FULL 20 HIỆU ỨNG:
 SMALL_BEAT = 1.15          # Ngưỡng beat nhỏ (vùng sáng hẹp)
 MID_BEAT = 1.35            # Ngưỡng beat vừa (vùng sáng trung bình)
 BIG_BEAT = 1.50            # Ngưỡng beat mạnh / drop (bung sáng toàn phím)
 MIN_CMD_INTERVAL = 0.085   # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
-# Giữ toàn bộ hiệu ứng tự sáng, bỏ 5 hiệu ứng chờ bấm phím (10..14)
-MODES = [6, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 18, 19, 20]
+# Đầy đủ toàn bộ 20 hiệu ứng từ 1 đến 20
+MODES = list(range(1, 21))
 # ==========================================
 
 VK_RCONTROL = 0xA3  # Phím Ctrl bên phải để đổi hiệu ứng
@@ -84,12 +84,12 @@ try:
         frames_per_buffer=1024
     )
 
-    mode_idx = 0
+    mode_idx = 5  # Bắt đầu tại mode = 6 (Bloom); bấm Right Ctrl để duyệt đủ 1 -> 20
     hue = 0
     set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-    print(f"Dang chay RGB da sac (Max sang 4, da tat Monochrome) tu: {device['name']}")
-    print("Bam phim [Right Ctrl] de doi hieu ung | Nhan Ctrl+C trong Terminal de dung.")
-    print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
+    print(f"Dang chay full 20 hieu ung RGB (Max sang 4, da tat Monochrome) tu: {device['name']}")
+    print("Bam [Right Ctrl] de chuyen qua 20 hieu ung | Nhan Ctrl+C trong Terminal de dung.")
+    print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]} ({mode_idx + 1}/20)")
 
     avg_energy = 100.0
     last_send_time = 0.0
@@ -100,11 +100,11 @@ try:
     while True:
         now = time.time()
 
-        # Bấm Right Ctrl để chuyển hiệu ứng
+        # Bấm Right Ctrl để xoay vòng đủ 20 hiệu ứng
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
             mode_idx = (mode_idx + 1) % len(MODES)
             set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-            print(f"-> Da chuyen sang hieu ung: mode = {MODES[mode_idx]}")
+            print(f"-> Da chuyen sang: mode = {MODES[mode_idx]} ({mode_idx + 1}/20)")
             last_switch_time = now
             last_send_time = now
 
