@@ -17,7 +17,8 @@ MID_BEAT = 1.35                # Ngưỡng beat vừa
 BIG_BEAT = 1.48                # Ngưỡng beat mạnh / drop
 MIN_CMD_INTERVAL = 0.085       # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
-MODES = [6, 1, 4, 5, 7, 8, 9]
+# Giữ toàn bộ các hiệu ứng (1..20), CHỈ BỎ [10, 11, 12, 13, 14] (TrigSingle, 3031, 3042, Tide, 3046)
+MODES = [6, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 18, 19, 20]
 # ==========================================
 
 VK_RCONTROL = 0xA3  # Phím Ctrl bên phải để đổi hiệu ứng thủ công
@@ -37,7 +38,7 @@ def send_cmd(h, payload):
     return h.read(64, timeout_ms=50)
 
 def set_led(h, mode, hue, switch_mode=False):
-    # Byte thứ 11 đặt = 0 để TẮT Monochrome (chạy đa sắc RGB), brightness = 4, speed = 4
+    # Tắt Monochrome (byte 11 = 0), khóa cứng brightness = 4, speed = 4, val = 255
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
     send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 0, 7, hue & 0xFF, 255, 255])
@@ -89,7 +90,7 @@ try:
     mode_idx = 0
     hue = 0
     set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-    print(f"Dang chay RGB da sac (da tat Monochrome) theo nhac tu: {device['name']}")
+    print(f"Dang chay tat ca hieu ung RGB theo nhac tu: {device['name']}")
     print("Bam [Right Ctrl] de doi ngay | Nhan Ctrl+C trong Terminal de dung.")
     print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
 
