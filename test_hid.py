@@ -3,17 +3,15 @@ import time
 import math
 import struct
 import random
-import ctypes
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# TÙY CHỈNH NHẠY NHẠC & DANH SÁCH HIỆU ỨNG:
-SENSITIVITY = 1.22       # Độ nhạy bắt beat (càng nhỏ càng dễ bắt nhịp)
-MIN_BEAT_GAP = 0.2    # Nhịp cập nhật theo beat (giây)
-MODES = [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+# TÙY CHỈNH NGƯỠNG BEAT NHỎ / VỪA / TO:
+SMALL_BEAT = 1.15        # Ngưỡng bắt beat nhỏ (vùng sáng hẹp ở tâm)
+MID_BEAT = 1.35          # Ngưỡng bắt beat vừa (vùng sáng nửa phím)
+BIG_BEAT = 1.55          # Ngưỡng bắt beat mạnh / drop (bung sáng kín 61 phím)
+MIN_CMD_INTERVAL = 0.085 # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 # ==========================================
-
-VK_RCONTROL = 0xA3  # Bấm Right Ctrl để đổi sang hiệu ứng tiếp theo
 
 def open_kb():
     for d in hid.enumerate(0x36AE, 0xFEAD):
@@ -29,11 +27,11 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_led(h, mode, hue, brightness=4, val=255, switch_mode=False):
-    if switch_mode:
-        send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    # Khóa cứng brightness <= 4 và speed = 4 để mạch TK61 Pro luôn sáng đều toàn phím
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, brightness, 4, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
+def set_bloom(h, hue, brightness=4, speed=4, val=255):
+    # Khóa an toàn brightness (1..4) và speed (1..4) cho mạch TK61 Pro
+    b = max(1, min(4, brightness))
+    s = max(1, min(4, speed))
+    send_cmd(h, [11, 11, 0, 0, 1, 0, 6, b, s, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -63,8 +61,6 @@ if not kb:
     exit()
 
 p = pyaudio.PyAudio()
-user32 = ctypes.windll.user32
-
 try:
     device = get_loopback_device(p)
     channels = device["maxInputChannels"]
@@ -79,49 +75,65 @@ try:
         frames_per_buffer=1024
     )
 
-    mode_idx = 0  # Bắt đầu từ mode = 1 (sáng đều toàn bàn phím, đổi màu tức thì theo beat)
+    send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
     hue = 0
-    set_led(kb, MODES[mode_idx], hue, brightness=3, val=210, switch_mode=True)
-
-    print(f"Dang bat nhac tu: {device['name']}")
-    print("Bam phim [Right Ctrl] de DOI HIEU UNG | Nhan Ctrl+C trong Terminal de dung.")
-    print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
+    set_bloom(kb, hue, brightness=1, speed=1, val=70)
+    print(f"Dang bat nhac (vung sang nho/to theo beat) tu: {device['name']}")
+    print("Nhan Ctrl+C de dung.")
 
     avg_energy = 100.0
-    last_beat_time = 0.0
-    last_switch_time = 0.0
-    is_bright = False
+    last_send_time = 0.0
+    hold_until = 0.0
+    current_tier = 0  # 0: nghi, 1: beat nho, 2: beat vua, 3: beat to
 
     while True:
-        now = time.time()
-
-        # Kiểm tra phím Right Ctrl để đổi hiệu ứng ngay lập tức
-        if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
-            mode_idx = (mode_idx + 1) % len(MODES)
-            set_led(kb, MODES[mode_idx], hue, brightness=4, val=255, switch_mode=True)
-            print(f"-> Da chuyen sang hieu ung: mode = {MODES[mode_idx]}")
-            last_switch_time = now
-
         data = stream.read(1024, exception_on_overflow=False)
         rms = calc_rms(data)
-        avg_energy = avg_energy * 0.90 + rms * 0.10
-        ratio = rms / max(130.0, avg_energy)
 
-        if rms > 130.0 and ratio >= SENSITIVITY and (now - last_beat_time >= MIN_BEAT_GAP):
-            if ratio > 1.45:
-                hue = (hue + random.randint(95, 145)) % 256
+        avg_energy = avg_energy * 0.90 + rms * 0.10
+        now = time.time()
+        ratio = rms / max(125.0, avg_energy)
+
+        # Phân loại độ mạnh của beat theo 3 cấp độ vùng sáng
+        tier = 0
+        if rms > 125.0:
+            if ratio >= BIG_BEAT:
+                tier = 3
+            elif ratio >= MID_BEAT:
+                tier = 2
+            elif ratio >= SMALL_BEAT:
+                tier = 1
+
+        # Kích hoạt khi có beat mới (hoặc beat hiện tại mạnh hơn beat đang ngân)
+        if tier > 0 and (now >= hold_until or tier > current_tier) and (now - last_send_time >= MIN_CMD_INTERVAL):
+            current_tier = tier
+            if tier == 3:
+                # Beat to: bung tốc độ 4, sáng tối đa, giữ 0.42s để sóng lan hết bàn phím
+                hue = (hue + random.randint(85, 140)) % 256
+                set_bloom(kb, hue, brightness=4, speed=4, val=255)
+                hold_until = now + 0.42
+            elif tier == 2:
+                # Beat vừa: lan tốc độ 3, giữ 0.22s để sáng khoảng nửa phím
+                hue = (hue + 38) % 256
+                set_bloom(kb, hue, brightness=3, speed=3, val=210)
+                hold_until = now + 0.22
             else:
-                hue = (hue + 35) % 256
-            set_led(kb, MODES[mode_idx], hue, brightness=4, val=255)
-            last_beat_time = now
-            is_bright = True
-        elif is_bright and (now - last_beat_time >= MIN_BEAT_GAP) and rms < avg_energy * 0.9:
-            hue = (hue + 18) % 256
-            set_led(kb, MODES[mode_idx], hue, brightness=3, val=210)
-            is_bright = False
+                # Beat nhỏ: lan chậm tốc độ 1, chỉ giữ 0.11s rồi thu lại tạo quầng sáng nhỏ
+                hue = (hue + 20) % 256
+                set_bloom(kb, hue, brightness=2, speed=1, val=150)
+                hold_until = now + 0.11
+            last_send_time = now
+
+        # Hết thời gian ngân của beat -> thu gọn về nền dịu để tách bạch rõ nhịp sau
+        elif current_tier > 0 and now >= hold_until and (now - last_send_time >= MIN_CMD_INTERVAL):
+            hue = (hue + 8) % 256
+            set_bloom(kb, hue, brightness=1, speed=1, val=75)
+            current_tier = 0
+            last_send_time = now
 
 except KeyboardInterrupt:
-    set_led(kb, 6, 255, brightness=4, val=255, switch_mode=True)
+    send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
+    set_bloom(kb, 255, brightness=4, speed=4, val=255)
     print("\nDa dung va khoi phuc den goc!")
 finally:
     if 'stream' in locals():
