@@ -4,10 +4,10 @@ class SinhVien{
     public SinhVien(){}
 
     public void in(Scanner sc){
-        id=sc.nextLine();
-        name= sc.nextLine();
-        clas = sc.nextLine();
-        email=sc.nextLine();
+        id=sc.nextLine().trim();
+        name= sc.nextLine().trim();
+        clas = sc.nextLine().trim();
+        email=sc.nextLine().trim();
     }
 
     @Override
@@ -19,7 +19,7 @@ class SinhVien{
 public class SapXepSinhVienTheoLop {
     public static void main(String[] agrs){
         Scanner sc= new Scanner(System.in);
-        int n=Integer.parseInt(sc.nextLine());
+        int n=Integer.parseInt(sc.nextLine().trim());
         ArrayList <SinhVien> ds= new ArrayList<>();
         while( n-->0 ){
             SinhVien x= new SinhVien();
