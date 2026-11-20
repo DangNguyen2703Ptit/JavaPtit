@@ -23,12 +23,14 @@ else:
     try:
         hue = 0
         while True:
-            # type=1, mode=1 (Static), brightness=4, speed=4, dir=1, color=1 (Monochrome), singleColorIndex=7 (HSV)
-            data = [11, 11, 0, 0, 1, 0, 1, 4, 4, 1, 1, 7, hue, 255, 255]
+            # Đổi mode = 2 (Sáng tĩnh) và singleColorIndex = 0 (Dùng màu HSV tùy chỉnh)
+            data = [11, 11, 0, 0, 1, 0, 2, 4, 4, 1, 1, 0, hue, 255, 255]
             send_cmd(kb, data)
             hue = (hue + 4) % 256
             time.sleep(0.03)
     except KeyboardInterrupt:
-        print("Da dung!")
+        # Khi bấm Ctrl+C, tự động trả về hiệu ứng gốc (mode = 6) của bàn phím
+        send_cmd(kb, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 0, 7, 255, 255, 255])
+        print("Da dung va khoi phuc den goc!")
     finally:
         kb.close()
