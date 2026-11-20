@@ -7,7 +7,7 @@ import pyaudiowpatch as pyaudio
 
 # ==========================================
 # TÙY CHỈNH ĐỘ NHẠY NHẠC:
-SENSITIVITY = 1.35   # Giảm xuống 1.15 nếu nhạc nhẹ khó bắt nhịp; tăng lên 1.6 nếu nháy quá dày
+SENSITIVITY = 1.35       # Giảm xuống 1.15 nếu nhạc nhẹ khó bắt nhịp; tăng lên 1.6 nếu nháy quá dày
 MIN_CMD_INTERVAL = 0.09  # Giới hạn tốc độ gửi lệnh (giây) để mạch TK61 Pro không bị nghẽn
 # ==========================================
 
@@ -37,12 +37,17 @@ def calc_rms(raw_bytes):
     return math.sqrt(sum_sq / count)
 
 def get_loopback_device(p):
+    if hasattr(p, "get_default_wasapi_loopback"):
+        return p.get_default_wasapi_loopback()
     wasapi = p.get_host_api_info_by_type(pyaudio.paWASAPI)
     default_speakers = p.get_device_info_by_index(wasapi["defaultOutputDevice"])
-    if not default_speakers["isLoopback"]:
-        for loopback in p.get_loopback_device_info_generator():
+    if not default_speakers.get("isLoopback", False):
+        loopbacks = list(p.get_loopback_device_info_generator())
+        for loopback in loopbacks:
             if default_speakers["name"] in loopback["name"]:
                 return loopback
+        if loopbacks:
+            return loopbacks[0]
     return default_speakers
 
 kb = open_kb()
@@ -79,18 +84,15 @@ try:
         data = stream.read(1024, exception_on_overflow=False)
         rms = calc_rms(data)
 
-        # Tự động cân bằng theo mức âm lượng to/nhỏ của máy tính
         avg_energy = avg_energy * 0.92 + rms * 0.08
         now = time.time()
 
         if now - last_send_time >= MIN_CMD_INTERVAL:
-            # Khi có tiếng bass / nhịp trống vượt ngưỡng trung bình -> Đổi màu + Bừng sáng tối đa
             if rms > max(150.0, avg_energy * SENSITIVITY):
                 hue = (hue + random.randint(45, 115)) % 256
                 set_led(kb, hue, brightness=4, val=255)
                 last_send_time = now
                 is_bright = True
-            # Khi nhạc lắng xuống hoặc tạm dừng -> Hạ dịu độ sáng để tạo nhịp thở
             elif is_bright and rms < avg_energy * 0.85:
                 set_led(kb, hue, brightness=1, val=90)
                 last_send_time = now
