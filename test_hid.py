@@ -1,26 +1,36 @@
 import hid
+import time
 
-v = 0x36AE
-p = 0xFEAD
+def open_kb():
+    for d in hid.enumerate(0x36AE, 0xFEAD):
+        if d['usage_page'] == 0xFF00 and d['usage'] == 0x0002:
+            h = hid.device()
+            h.open_path(d['path'])
+            return h
+    return None
 
-for d in hid.enumerate(v, p):
-    print(hex(d['usage_page']), hex(d['usage']), d['path'])
-    if d['usage_page'] == 0xFF00 and d['usage'] == 0x0002:
-        h = hid.device()
-        h.open_path(d['path'])
-        print("OK")
-        h.close()
-        import hid
+def send_cmd(h, payload):
+    pkt = [0, 6] + payload
+    pkt += [0] * (65 - len(pkt))
+    h.write(pkt)
+    return h.read(64, timeout_ms=50)
 
-h = hid.device()
-for d in hid.enumerate(0x36AE, 0xFEAD):
-    if d['usage_page'] == 0xFF00 and d['usage'] == 0x0002:
-        h.open_path(d['path'])
-        for report_id in range(0, 16):
-            try:
-                res = h.get_feature_report(report_id, 65)
-                if res:
-                    print(f"ID {report_id}:", [hex(x) for x in res])
-            except Exception:
-                pass
-        h.close()
+kb = open_kb()
+if not kb:
+    print("Khong tim thay ban phim!")
+else:
+    cfg = send_cmd(kb, [10])
+    print("Cau hinh goc:", cfg[:17])
+
+    print("Dang chay cau vong... Nhan Ctrl+C de dung.")
+    try:
+        hue = 0
+        while True:
+            data = [11, 11, 0, 0, 0, 0, 1, 4, 3, 0, 1, 0, hue, 255, 255]
+            send_cmd(kb, data)
+            hue = (hue + 4) % 256
+            time.sleep(0.03)
+    except KeyboardInterrupt:
+        print("Da dung!")
+    finally:
+        kb.close()
