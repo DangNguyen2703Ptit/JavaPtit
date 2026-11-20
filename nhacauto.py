@@ -7,14 +7,15 @@ import ctypes
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# TÙY CHỈNH TỰ ĐỘNG CHUYỂN HIỆU ỨNG & BEAT:
-AUTO_SWITCH_ON_DROP = True   # True: Tự đổi hiệu ứng mới khi có tiếng bass/drop mạnh
-AUTO_SWITCH_SECONDS = 12.0   # Tự đổi sang hiệu ứng khác sau mỗi 12 giây (đặt 0 nếu chỉ muốn đổi khi drop)
+# TÙY CHỈNH TỐC ĐỘ CHUYỂN HIỆU ỨNG & BEAT:
+AUTO_SWITCH_ON_DROP = True     # Tự nhảy hiệu ứng ngay khi có tiếng bass/drop
+DROP_SWITCH_COOLDOWN = 0.6     # Khoảng cách tối thiểu giữa 2 lần đổi theo beat (giây) -> càng nhỏ đổi càng nhanh
+AUTO_SWITCH_SECONDS = 4.0      # Tự đổi sang hiệu ứng khác sau mỗi 4 giây nếu nhạc êm
 
-SMALL_BEAT = 1.15            # Ngưỡng beat nhỏ
-MID_BEAT = 1.35              # Ngưỡng beat vừa
-BIG_BEAT = 1.55              # Ngưỡng beat mạnh / drop
-MIN_CMD_INTERVAL = 0.085     # Nhịp gửi lệnh an toàn cho chip TK61 Pro
+SMALL_BEAT = 1.15              # Ngưỡng beat nhỏ
+MID_BEAT = 1.35                # Ngưỡng beat vừa
+BIG_BEAT = 1.48                # Hạ nhẹ xuống 1.48 để bắt drop nhạy và đổi hiệu ứng dồn dập hơn
+MIN_CMD_INTERVAL = 0.085       # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
 MODES = [6, 1, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 # ==========================================
@@ -88,7 +89,7 @@ try:
     mode_idx = 0
     hue = 0
     set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-    print(f"Dang chay tu dong doi hieu ung & bat beat tu: {device['name']}")
+    print(f"Dang chay chuyen hieu ung nhanh theo nhac tu: {device['name']}")
     print("Bam [Right Ctrl] de doi ngay | Nhan Ctrl+C trong Terminal de dung.")
     print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
 
@@ -105,15 +106,15 @@ try:
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
             mode_idx = (mode_idx + 1) % len(MODES)
             set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-            print(f"-> [Thu cong] Chuyen sang hieu ung: mode = {MODES[mode_idx]}")
+            print(f"-> [Thu cong] Chuyen sang: mode = {MODES[mode_idx]}")
             last_switch_time = now
             last_send_time = now
 
-        # 2. Tự động đổi hiệu ứng theo thời gian định kỳ (nếu bật AUTO_SWITCH_SECONDS > 0)
+        # 2. Tự động đổi hiệu ứng nhanh sau mỗi 4 giây
         elif AUTO_SWITCH_SECONDS > 0 and (now - last_switch_time >= AUTO_SWITCH_SECONDS):
             mode_idx = (mode_idx + 1) % len(MODES)
             set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-            print(f"-> [Tu dong] Het {int(AUTO_SWITCH_SECONDS)}s, doi sang: mode = {MODES[mode_idx]}")
+            print(f"-> [Tu dong {AUTO_SWITCH_SECONDS}s] Doi sang: mode = {MODES[mode_idx]}")
             last_switch_time = now
             last_send_time = now
 
@@ -138,12 +139,12 @@ try:
 
             if tier == 3:
                 hue = (hue + random.randint(85, 140)) % 256
-                # 3. Tự động đổi hiệu ứng khi gặp cú drop mạnh (cách lần đổi trước ít nhất 2 giây để khỏi loạn)
-                if AUTO_SWITCH_ON_DROP and (now - last_switch_time >= 2.0):
+                # 3. Nhảy ngay sang hiệu ứng khác mỗi khi có cú bass/drop (cách nhau 0.6s)
+                if AUTO_SWITCH_ON_DROP and (now - last_switch_time >= DROP_SWITCH_COOLDOWN):
                     mode_idx = (mode_idx + 1) % len(MODES)
                     switched = True
                     last_switch_time = now
-                    print(f"-> [Drop manh] Tu dong doi sang: mode = {MODES[mode_idx]}")
+                    print(f"-> [Drop] Doi nhanh sang: mode = {MODES[mode_idx]}")
                 set_led(kb, MODES[mode_idx], hue, switch_mode=switched)
                 hold_until = now + 0.42
             elif tier == 2:
