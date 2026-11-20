@@ -13,12 +13,11 @@ MID_BEAT = 1.35            # Ngưỡng beat vừa (vùng sáng trung bình)
 BIG_BEAT = 1.55            # Ngưỡng beat mạnh / drop (bung sáng toàn phím)
 MIN_CMD_INTERVAL = 0.085   # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
-# Danh sách các mode hiệu ứng (bắt đầu từ 6 - Bloom để thấy rõ vùng sáng nhỏ/to)
 MODES = [6, 1, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-AUTO_SWITCH_ON_DROP = False  # Đổi thành True nếu muốn tự động nhảy sang hiệu ứng khác khi gặp bass cực mạnh
+AUTO_SWITCH_ON_DROP = False
 # ==========================================
 
-VK_RCONTROL = 0xA3  # Phím Ctrl bên phải để đổi hiệu ứng thủ công
+VK_RCONTROL = 0xA3  # Phím Ctrl bên phải để đổi hiệu ứng
 
 def open_kb():
     for d in hid.enumerate(0x36AE, 0xFEAD):
@@ -34,13 +33,11 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_led(h, mode, hue, brightness=4, speed=4, val=255, switch_mode=False):
-    # Khóa cứng brightness (1..4) và speed (1..4) để mạch TK61 Pro không bao giờ bị tràn/kẹt phím
-    b = max(1, min(4, brightness))
-    s = max(1, min(4, speed))
+def set_led(h, mode, hue, switch_mode=False):
+    # Luôn khóa cứng brightness = 4, speed = 4, val = 255 (tối đa mọi lúc)
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, b, s, 1, 1, 7, hue & 0xFF, 255, val & 0xFF])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 1, 7, hue & 0xFF, 255, 255])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -88,8 +85,8 @@ try:
 
     mode_idx = 0
     hue = 0
-    set_led(kb, MODES[mode_idx], hue, brightness=1, speed=1, val=70, switch_mode=True)
-    print(f"Dang bat nhac tu: {device['name']}")
+    set_led(kb, MODES[mode_idx], hue, switch_mode=True)
+    print(f"Dang bat nhac (Max 4 do sang & toc do) tu: {device['name']}")
     print("Bam [Right Ctrl] de DOI HIEU UNG | Nhan Ctrl+C trong Terminal de dung.")
     print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
 
@@ -102,10 +99,9 @@ try:
     while True:
         now = time.time()
 
-        # Bấm Right Ctrl để chuyển sang hiệu ứng tiếp theo
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
             mode_idx = (mode_idx + 1) % len(MODES)
-            set_led(kb, MODES[mode_idx], hue, brightness=4, speed=4, val=255, switch_mode=True)
+            set_led(kb, MODES[mode_idx], hue, switch_mode=True)
             print(f"-> Da chuyen sang hieu ung: mode = {MODES[mode_idx]}")
             last_switch_time = now
             last_send_time = now
@@ -136,26 +132,26 @@ try:
                     switched = True
                     last_switch_time = now
                     print(f"-> Drop manh! Tu dong doi sang mode = {MODES[mode_idx]}")
-                set_led(kb, MODES[mode_idx], hue, brightness=4, speed=4, val=255, switch_mode=switched)
+                set_led(kb, MODES[mode_idx], hue, switch_mode=switched)
                 hold_until = now + 0.42
             elif tier == 2:
                 hue = (hue + 38) % 256
-                set_led(kb, MODES[mode_idx], hue, brightness=3, speed=3, val=210)
+                set_led(kb, MODES[mode_idx], hue)
                 hold_until = now + 0.22
             else:
                 hue = (hue + 20) % 256
-                set_led(kb, MODES[mode_idx], hue, brightness=2, speed=1, val=150)
+                set_led(kb, MODES[mode_idx], hue)
                 hold_until = now + 0.11
             last_send_time = now
 
         elif current_tier > 0 and now >= hold_until and (now - last_send_time >= MIN_CMD_INTERVAL):
             hue = (hue + 8) % 256
-            set_led(kb, MODES[mode_idx], hue, brightness=1, speed=1, val=75)
+            set_led(kb, MODES[mode_idx], hue)
             current_tier = 0
             last_send_time = now
 
 except KeyboardInterrupt:
-    set_led(kb, 6, 255, brightness=4, speed=4, val=255, switch_mode=True)
+    set_led(kb, 6, 255, switch_mode=True)
     print("\nDa dung va khoi phuc den goc!")
 finally:
     if 'stream' in locals():
