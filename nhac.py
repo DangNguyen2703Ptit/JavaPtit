@@ -15,17 +15,6 @@ MIN_CMD_INTERVAL = 0.085   # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
 BRIGHTNESS = 4             # Khóa cứng độ sáng tối đa (4/4)
 MODES = list(range(1, 21))
-
-# 7 cặp (mã màu preset 0..6, mã hue tương ứng) để lên đủ 7 màu trên mọi mode kể cả mode 4
-PALETTE = [
-    (0, 0),     # Đỏ
-    (1, 22),    # Cam
-    (2, 45),    # Vàng
-    (3, 85),    # Xanh lá
-    (4, 130),   # Xanh ngọc (Cyan)
-    (5, 170),   # Xanh dương
-    (6, 210),   # Tím
-]
 # ==========================================
 
 VK_RCONTROL = 0xA3  # Phím Ctrl phải: Đổi hiệu ứng (1 -> 20)
@@ -47,13 +36,13 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_led(h, mode, color_step, speed=4, switch_mode=False):
-    # Byte 11 = 1: BẬT Monochrome | Byte 12 = color_idx (0..6) giúp mode 4 đổi đủ 7 màu
+def set_led(h, mode, hue, speed=4, switch_mode=False):
     s = max(1, min(4, int(speed)))
-    color_idx, hue = PALETTE[color_step % len(PALETTE)]
+    # Riêng mode = 4 tắt Monochrome (0) để chạy đủ 7 màu; các mode khác bật Monochrome (1) đổi màu theo beat
+    mono = 0 if mode == 4 else 1
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, BRIGHTNESS, s, 1, 1, color_idx, hue, 255, 255])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, BRIGHTNESS, s, 1, mono, 7, hue & 0xFF, 255, 255])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -100,11 +89,11 @@ try:
     )
 
     mode_idx = 5  # Bắt đầu tại mode = 6
-    color_step = 0
+    hue = 0
     cur_mode = MODES[mode_idx]
-    set_led(kb, cur_mode, color_step, speed=mode_speeds[cur_mode], switch_mode=True)
+    set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
 
-    print(f"Dang chay Monochrome 7 mau theo beat tu: {device['name']}")
+    print(f"Dang chay Monochrome theo beat tu: {device['name']}")
     print("Phim tat: [Right Ctrl] = Doi hieu ung | [Right Alt] = Doi toc do (1..4) | Ctrl+C = Dung")
     print(f"-> Hieu ung: mode = {cur_mode} ({mode_idx + 1}/20) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
 
@@ -123,7 +112,7 @@ try:
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
             mode_idx = (mode_idx + 1) % len(MODES)
             cur_mode = MODES[mode_idx]
-            set_led(kb, cur_mode, color_step, speed=mode_speeds[cur_mode], switch_mode=True)
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
             print(f"-> Doi hieu ung: mode = {cur_mode} ({mode_idx + 1}/20) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
             last_switch_time = now
             last_send_time = now
@@ -131,7 +120,7 @@ try:
         # 2. Bấm Right Alt: Chỉnh tốc độ (1 -> 2 -> 3 -> 4) cho hiệu ứng hiện tại
         if (user32.GetAsyncKeyState(VK_RMENU) & 0x0001) and (now - last_speed_time >= 0.25):
             mode_speeds[cur_mode] = (mode_speeds[cur_mode] % 4) + 1
-            set_led(kb, cur_mode, color_step, speed=mode_speeds[cur_mode], switch_mode=True)
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
             print(f"-> Chinh toc do mode {cur_mode}: Toc do {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
             last_speed_time = now
             last_send_time = now
@@ -154,23 +143,25 @@ try:
         if tier > 0 and (now >= hold_until or tier > current_tier) and (now - last_send_time >= MIN_CMD_INTERVAL):
             current_tier = tier
             if tier == 3:
-                color_step = (color_step + random.choice([2, 3, 4])) % len(PALETTE)
+                hue = (hue + random.randint(45, 85)) % 256
                 hold_until = now + 0.42
             elif tier == 2:
-                color_step = (color_step + 1) % len(PALETTE)
+                hue = (hue + 35) % 256
                 hold_until = now + 0.22
             else:
-                color_step = (color_step + 1) % len(PALETTE)
+                hue = (hue + 20) % 256
                 hold_until = now + 0.11
-            set_led(kb, cur_mode, color_step, speed=mode_speeds[cur_mode])
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode])
             last_send_time = now
 
         elif current_tier > 0 and now >= hold_until and (now - last_send_time >= MIN_CMD_INTERVAL):
+            hue = (hue + 8) % 256
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode])
             current_tier = 0
             last_send_time = now
 
 except KeyboardInterrupt:
-    set_led(kb, 6, 0, speed=4, switch_mode=True)
+    set_led(kb, 6, 255, speed=4, switch_mode=True)
     print("\nDa dung va khoi phuc den goc!")
 finally:
     if 'stream' in locals():
