@@ -7,21 +7,25 @@ import ctypes
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# TÙY CHỈNH TỐC ĐỘ CHUYỂN HIỆU ỨNG & BEAT:
-AUTO_SWITCH_ON_DROP = True     # Tự nhảy hiệu ứng ngay khi có tiếng bass/drop
-DROP_SWITCH_COOLDOWN = 0.6     # Khoảng cách tối thiểu giữa 2 lần đổi theo beat (giây)
-AUTO_SWITCH_SECONDS = 4.0      # Tự đổi sang hiệu ứng khác sau mỗi 4 giây nếu nhạc êm
+# CẤU HÌNH MIX MODE TỰ ĐỘNG & NHẠY BEAT:
+AUTO_MIX_ON_BEAT = True      # True: Tự động nhảy sang hiệu ứng khác khi có bass/drop mạnh
+BEAT_MIX_COOLDOWN = 0.85     # Thời gian tối thiểu giữa 2 lần tự đổi mode theo beat (giây)
+AUTO_MIX_IDLE_SEC = 6.0      # Tự đổi hiệu ứng sau 6 giây nếu đoạn nhạc êm (đặt 0 để tắt)
 
-SMALL_BEAT = 1.15              # Ngưỡng beat nhỏ
-MID_BEAT = 1.35                # Ngưỡng beat vừa
-BIG_BEAT = 1.48                # Ngưỡng beat mạnh / drop
-MIN_CMD_INTERVAL = 0.085       # Nhịp gửi lệnh an toàn cho chip TK61 Pro
+SMALL_BEAT = 1.15            # Ngưỡng beat nhỏ
+MID_BEAT = 1.35              # Ngưỡng beat vừa
+BIG_BEAT = 1.48              # Ngưỡng beat mạnh / drop (kích hoạt đổi hiệu ứng)
+MIN_CMD_INTERVAL = 0.085     # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
-# Giữ toàn bộ các hiệu ứng (1..20), CHỈ BỎ [10, 11, 12, 13, 14] (TrigSingle, 3031, 3042, Tide, 3046)
-MODES = [6, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 18, 19, 20]
+BRIGHTNESS = 4               # Khóa cứng độ sáng tối đa (4/4)
+# Đã bỏ 8, 11, 15, 19, 20 -> Còn 15 hiệu ứng để mix theo beat
+MODES = [1, 2, 3, 4, 5, 6, 7, 9, 10, 12, 13, 14, 16, 17, 18]
 # ==========================================
 
-VK_RCONTROL = 0xA3  # Phím Ctrl bên phải để đổi hiệu ứng thủ công
+VK_RCONTROL = 0xA3  # Phím Ctrl phải: Đổi ngay sang hiệu ứng tiếp theo
+VK_RMENU = 0xA5     # Phím Alt phải: Chỉnh tốc độ riêng cho hiệu ứng đang bật (1 -> 4)
+
+mode_speeds = {m: 4 for m in MODES}
 
 def open_kb():
     for d in hid.enumerate(0x36AE, 0xFEAD):
@@ -37,11 +41,13 @@ def send_cmd(h, payload):
     h.write(pkt)
     return h.read(64, timeout_ms=50)
 
-def set_led(h, mode, hue, switch_mode=False):
-    # Tắt Monochrome (byte 11 = 0), khóa cứng brightness = 4, speed = 4, val = 255
+def set_led(h, mode, hue, speed=4, switch_mode=False):
+    s = max(1, min(4, int(speed)))
+    # Riêng mode = 4 tắt Monochrome (0) để chạy đủ 7 màu; các mode khác bật Monochrome (1) đổi màu theo beat
+    mono = 0 if mode == 4 else 1
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 0, 7, hue & 0xFF, 255, 255])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, BRIGHTNESS, s, 1, mono, 7, hue & 0xFF, 255, 255])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -65,6 +71,12 @@ def get_loopback_device(p):
             return loopbacks[0]
     return default_speakers
 
+def pick_next_random_idx(current_idx, total):
+    if total <= 1:
+        return 0
+    choices = [i for i in range(total) if i != current_idx]
+    return random.choice(choices)
+
 kb = open_kb()
 if not kb:
     print("Khong tim thay ban phim! Hay tat SDTech Options truoc.")
@@ -87,35 +99,50 @@ try:
         frames_per_buffer=1024
     )
 
-    mode_idx = 0
+    mode_idx = 5  # Bắt đầu tại mode = 6
     hue = 0
-    set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-    print(f"Dang chay tat ca hieu ung RGB theo nhac tu: {device['name']}")
-    print("Bam [Right Ctrl] de doi ngay | Nhan Ctrl+C trong Terminal de dung.")
-    print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]}")
+    cur_mode = MODES[mode_idx]
+    total_modes = len(MODES)
+    set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
+
+    print(f"Dang chay MIX {total_modes} hieu ung theo beat tu: {device['name']}")
+    print("Phim tat: [Right Ctrl] = Doi ngay | [Right Alt] = Doi toc do (1..4) | Ctrl+C = Dung")
+    print(f"-> Hieu ung: mode = {cur_mode} ({mode_idx + 1}/{total_modes}) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
 
     avg_energy = 100.0
     last_send_time = 0.0
     last_switch_time = time.time()
+    last_speed_time = 0.0
     hold_until = 0.0
     current_tier = 0
 
     while True:
         now = time.time()
+        cur_mode = MODES[mode_idx]
 
-        # 1. Bấm Right Ctrl để đổi hiệu ứng ngay lập tức
+        # 1. Bấm Right Ctrl: Đổi thủ công sang hiệu ứng kế tiếp
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
-            mode_idx = (mode_idx + 1) % len(MODES)
-            set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-            print(f"-> [Thu cong] Chuyen sang: mode = {MODES[mode_idx]}")
+            mode_idx = (mode_idx + 1) % total_modes
+            cur_mode = MODES[mode_idx]
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
+            print(f"-> [Thu cong] mode = {cur_mode} ({mode_idx + 1}/{total_modes}) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
             last_switch_time = now
             last_send_time = now
 
-        # 2. Tự động đổi hiệu ứng nhanh sau mỗi 4 giây
-        elif AUTO_SWITCH_SECONDS > 0 and (now - last_switch_time >= AUTO_SWITCH_SECONDS):
-            mode_idx = (mode_idx + 1) % len(MODES)
-            set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-            print(f"-> [Tu dong {AUTO_SWITCH_SECONDS}s] Doi sang: mode = {MODES[mode_idx]}")
+        # 2. Bấm Right Alt: Chỉnh tốc độ (1 -> 2 -> 3 -> 4) cho hiệu ứng hiện tại
+        if (user32.GetAsyncKeyState(VK_RMENU) & 0x0001) and (now - last_speed_time >= 0.25):
+            mode_speeds[cur_mode] = (mode_speeds[cur_mode] % 4) + 1
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
+            print(f"-> Chinh toc do mode {cur_mode}: Toc do {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
+            last_speed_time = now
+            last_send_time = now
+
+        # 3. Tự động mix sang hiệu ứng ngẫu nhiên khác nếu đoạn nhạc êm quá 6 giây
+        if AUTO_MIX_IDLE_SEC > 0 and (now - last_switch_time >= AUTO_MIX_IDLE_SEC):
+            mode_idx = pick_next_random_idx(mode_idx, total_modes)
+            cur_mode = MODES[mode_idx]
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
+            print(f"-> [Mix nhe] mode = {cur_mode} ({mode_idx + 1}/{total_modes}) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
             last_switch_time = now
             last_send_time = now
 
@@ -139,32 +166,33 @@ try:
             switched = False
 
             if tier == 3:
-                hue = (hue + random.randint(85, 140)) % 256
-                if AUTO_SWITCH_ON_DROP and (now - last_switch_time >= DROP_SWITCH_COOLDOWN):
-                    mode_idx = (mode_idx + 1) % len(MODES)
+                hue = (hue + random.randint(45, 85)) % 256
+                # Nhảy ngẫu nhiên sang hiệu ứng khác khi có cú bass/drop mạnh
+                if AUTO_MIX_ON_BEAT and (now - last_switch_time >= BEAT_MIX_COOLDOWN):
+                    mode_idx = pick_next_random_idx(mode_idx, total_modes)
+                    cur_mode = MODES[mode_idx]
                     switched = True
                     last_switch_time = now
-                    print(f"-> [Drop] Doi nhanh sang: mode = {MODES[mode_idx]}")
-                set_led(kb, MODES[mode_idx], hue, switch_mode=switched)
+                    print(f"-> [Mix Beat] mode = {cur_mode} ({mode_idx + 1}/{total_modes}) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
                 hold_until = now + 0.42
             elif tier == 2:
-                hue = (hue + 38) % 256
-                set_led(kb, MODES[mode_idx], hue)
+                hue = (hue + 35) % 256
                 hold_until = now + 0.22
             else:
                 hue = (hue + 20) % 256
-                set_led(kb, MODES[mode_idx], hue)
                 hold_until = now + 0.11
+
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=switched)
             last_send_time = now
 
         elif current_tier > 0 and now >= hold_until and (now - last_send_time >= MIN_CMD_INTERVAL):
             hue = (hue + 8) % 256
-            set_led(kb, MODES[mode_idx], hue)
+            set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode])
             current_tier = 0
             last_send_time = now
 
 except KeyboardInterrupt:
-    set_led(kb, 6, 255, switch_mode=True)
+    set_led(kb, 6, 255, speed=4, switch_mode=True)
     print("\nDa dung va khoi phuc den goc!")
 finally:
     if 'stream' in locals():
