@@ -34,11 +34,11 @@ def send_cmd(h, payload):
     return h.read(64, timeout_ms=50)
 
 def set_led(h, mode, hue, switch_mode=False):
-    # Byte 11 = 0: Tắt Monochrome (RGB đa sắc)
+    # Byte 11 = 1: BẬT Monochrome (đổi màu đơn sắc toàn phím theo từng nhịp beat)
     # Brightness = 4, Speed = 4, Val = 255: Luôn sáng tối đa mọi lúc
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 0, 7, hue & 0xFF, 255, 255])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, 4, 1, 1, 7, hue & 0xFF, 255, 255])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -87,7 +87,7 @@ try:
     mode_idx = 5  # Bắt đầu tại mode = 6 (Bloom); bấm Right Ctrl để duyệt đủ 1 -> 20
     hue = 0
     set_led(kb, MODES[mode_idx], hue, switch_mode=True)
-    print(f"Dang chay full 20 hieu ung RGB (Max sang 4, da tat Monochrome) tu: {device['name']}")
+    print(f"Dang chay Monochrome doi mau theo beat (Max sang 4) tu: {device['name']}")
     print("Bam [Right Ctrl] de chuyen qua 20 hieu ung | Nhan Ctrl+C trong Terminal de dung.")
     print(f"-> Hieu ung hien tai: mode = {MODES[mode_idx]} ({mode_idx + 1}/20)")
 
