@@ -9,12 +9,12 @@ import pyaudiowpatch as pyaudio
 # ==========================================
 # CẤU HÌNH MIX MODE NHANH & NHẠY BEAT:
 AUTO_MIX_ON_BEAT = True      # Tự động nhảy sang hiệu ứng khác theo nhịp beat
-BEAT_MIX_COOLDOWN = 0.35     # Thời gian tối thiểu giữa 2 lần đổi hiệu ứng theo beat (giây)
-AUTO_MIX_IDLE_SEC = 2.5      # Tự đổi hiệu ứng sau 2.5 giây nếu nhạc êm
+BEAT_MIX_COOLDOWN = 0.09     # Thời gian tối thiểu giữa 2 lần đổi hiệu ứng theo beat (giây)
+AUTO_MIX_IDLE_SEC = 1.2    # Tự đổi hiệu ứng sau 2.5 giây nếu nhạc êm
 
-SMALL_BEAT = 1.12            # Ngưỡng beat nhỏ
-MID_BEAT = 1.25              # Ngưỡng beat vừa
-BIG_BEAT = 1.35              # Ngưỡng beat mạnh / drop (kích hoạt đổi hiệu ứng)
+SMALL_BEAT = 1.02            # Ngưỡng beat nhỏ
+MID_BEAT = 1.06              # Ngưỡng beat vừa
+BIG_BEAT = 1.10              # Ngưỡng beat mạnh / drop (kích hoạt đổi hiệu ứng)
 MIN_CMD_INTERVAL = 0.085     # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
 BRIGHTNESS = 4               # Khóa cứng độ sáng tối đa (4/4)
