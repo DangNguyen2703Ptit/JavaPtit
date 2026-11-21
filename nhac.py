@@ -13,6 +13,7 @@ MID_BEAT = 1.35            # Ngưỡng beat vừa (vùng sáng trung bình)
 BIG_BEAT = 1.50            # Ngưỡng beat mạnh / drop (bung sáng toàn phím)
 MIN_CMD_INTERVAL = 0.085   # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
+BRIGHTNESS = 4             # Khóa cứng độ sáng tối đa (4/4)
 MODES = list(range(1, 21))
 # ==========================================
 
@@ -41,7 +42,7 @@ def set_led(h, mode, hue, speed=4, switch_mode=False):
     s = max(1, min(4, int(speed)))
     if switch_mode:
         send_cmd(h, [22, 0, 0, 0, 1, 0, mode])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, 4, s, 1, 1, 7, hue & 0xFF, 255, 255])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, mode, BRIGHTNESS, s, 1, 1, 7, hue & 0xFF, 255, 255])
 
 def calc_rms(raw_bytes):
     count = len(raw_bytes) // 2
@@ -94,7 +95,7 @@ try:
 
     print(f"Dang chay Monochrome theo beat tu: {device['name']}")
     print("Phim tat: [Right Ctrl] = Doi hieu ung | [Right Alt] = Doi toc do (1..4) | Ctrl+C = Dung")
-    print(f"-> Hieu ung: mode = {cur_mode} ({mode_idx + 1}/20) | Toc do: {mode_speeds[cur_mode]}/4")
+    print(f"-> Hieu ung: mode = {cur_mode} ({mode_idx + 1}/20) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
 
     avg_energy = 100.0
     last_send_time = 0.0
@@ -107,12 +108,12 @@ try:
         now = time.time()
         cur_mode = MODES[mode_idx]
 
-        # 1. Bấm Right Ctrl: Đổi hiệu ứng (giữ nguyên tốc độ đã lưu của hiệu ứng đó)
+        # 1. Bấm Right Ctrl: Đổi hiệu ứng
         if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
             mode_idx = (mode_idx + 1) % len(MODES)
             cur_mode = MODES[mode_idx]
             set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
-            print(f"-> Doi hieu ung: mode = {cur_mode} ({mode_idx + 1}/20) | Toc do: {mode_speeds[cur_mode]}/4")
+            print(f"-> Doi hieu ung: mode = {cur_mode} ({mode_idx + 1}/20) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
             last_switch_time = now
             last_send_time = now
 
@@ -120,7 +121,7 @@ try:
         if (user32.GetAsyncKeyState(VK_RMENU) & 0x0001) and (now - last_speed_time >= 0.25):
             mode_speeds[cur_mode] = (mode_speeds[cur_mode] % 4) + 1
             set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
-            print(f"-> Chinh toc do mode {cur_mode}: {mode_speeds[cur_mode]}/4")
+            print(f"-> Chinh toc do mode {cur_mode}: Toc do {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
             last_speed_time = now
             last_send_time = now
 
