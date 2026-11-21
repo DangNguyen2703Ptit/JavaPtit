@@ -7,14 +7,14 @@ import ctypes
 import pyaudiowpatch as pyaudio
 
 # ==========================================
-# CẤU HÌNH MIX MODE TỰ ĐỘNG & NHẠY BEAT:
-AUTO_MIX_ON_BEAT = True      # True: Tự động nhảy sang hiệu ứng khác khi có bass/drop mạnh
-BEAT_MIX_COOLDOWN = 0.85     # Thời gian tối thiểu giữa 2 lần tự đổi mode theo beat (giây)
-AUTO_MIX_IDLE_SEC = 6.0      # Tự đổi hiệu ứng sau 6 giây nếu đoạn nhạc êm (đặt 0 để tắt)
+# CẤU HÌNH MIX MODE NHANH & NHẠY BEAT:
+AUTO_MIX_ON_BEAT = True      # Tự động nhảy sang hiệu ứng khác theo nhịp beat
+BEAT_MIX_COOLDOWN = 0.35     # Giảm xuống 0.35s để đổi hiệu ứng liên tục theo từng nhịp trống
+AUTO_MIX_IDLE_SEC = 2.5      # Tự đổi hiệu ứng sau 2.5 giây nếu nhạc êm
 
-SMALL_BEAT = 1.15            # Ngưỡng beat nhỏ
-MID_BEAT = 1.35              # Ngưỡng beat vừa
-BIG_BEAT = 1.48              # Ngưỡng beat mạnh / drop (kích hoạt đổi hiệu ứng)
+SMALL_BEAT = 1.12            # Ngưỡng beat nhỏ
+MID_BEAT = 1.25              # Ngưỡng beat vừa
+BIG_BEAT = 1.35              # Hạ xuống 1.35 để nhịp trống nào cũng kích hoạt đổi hiệu ứng nhanh
 MIN_CMD_INTERVAL = 0.085     # Nhịp gửi lệnh an toàn cho chip TK61 Pro
 
 BRIGHTNESS = 4               # Khóa cứng độ sáng tối đa (4/4)
@@ -105,7 +105,7 @@ try:
     total_modes = len(MODES)
     set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
 
-    print(f"Dang chay MIX {total_modes} hieu ung theo beat tu: {device['name']}")
+    print(f"Dang chay MIX NHANH {total_modes} hieu ung theo beat tu: {device['name']}")
     print("Phim tat: [Right Ctrl] = Doi ngay | [Right Alt] = Doi toc do (1..4) | Ctrl+C = Dung")
     print(f"-> Hieu ung: mode = {cur_mode} ({mode_idx + 1}/{total_modes}) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
 
@@ -121,7 +121,7 @@ try:
         cur_mode = MODES[mode_idx]
 
         # 1. Bấm Right Ctrl: Đổi thủ công sang hiệu ứng kế tiếp
-        if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.25):
+        if (user32.GetAsyncKeyState(VK_RCONTROL) & 0x0001) and (now - last_switch_time >= 0.20):
             mode_idx = (mode_idx + 1) % total_modes
             cur_mode = MODES[mode_idx]
             set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
@@ -130,14 +130,14 @@ try:
             last_send_time = now
 
         # 2. Bấm Right Alt: Chỉnh tốc độ (1 -> 2 -> 3 -> 4) cho hiệu ứng hiện tại
-        if (user32.GetAsyncKeyState(VK_RMENU) & 0x0001) and (now - last_speed_time >= 0.25):
+        if (user32.GetAsyncKeyState(VK_RMENU) & 0x0001) and (now - last_speed_time >= 0.20):
             mode_speeds[cur_mode] = (mode_speeds[cur_mode] % 4) + 1
             set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
             print(f"-> Chinh toc do mode {cur_mode}: Toc do {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
             last_speed_time = now
             last_send_time = now
 
-        # 3. Tự động mix sang hiệu ứng ngẫu nhiên khác nếu đoạn nhạc êm quá 6 giây
+        # 3. Tự động mix nhanh sau 2.5 giây nếu nhạc êm
         if AUTO_MIX_IDLE_SEC > 0 and (now - last_switch_time >= AUTO_MIX_IDLE_SEC):
             mode_idx = pick_next_random_idx(mode_idx, total_modes)
             cur_mode = MODES[mode_idx]
@@ -167,20 +167,19 @@ try:
 
             if tier == 3:
                 hue = (hue + random.randint(45, 85)) % 256
-                # Nhảy ngẫu nhiên sang hiệu ứng khác khi có cú bass/drop mạnh
                 if AUTO_MIX_ON_BEAT and (now - last_switch_time >= BEAT_MIX_COOLDOWN):
                     mode_idx = pick_next_random_idx(mode_idx, total_modes)
                     cur_mode = MODES[mode_idx]
                     switched = True
                     last_switch_time = now
                     print(f"-> [Mix Beat] mode = {cur_mode} ({mode_idx + 1}/{total_modes}) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
-                hold_until = now + 0.42
+                hold_until = now + 0.25
             elif tier == 2:
                 hue = (hue + 35) % 256
-                hold_until = now + 0.22
+                hold_until = now + 0.15
             else:
                 hue = (hue + 20) % 256
-                hold_until = now + 0.11
+                hold_until = now + 0.09
 
             set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=switched)
             last_send_time = now
