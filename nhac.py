@@ -93,7 +93,7 @@ try:
     cur_mode = MODES[mode_idx]
     set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode], switch_mode=True)
 
-    print(f"Dang chay Monochrome theo beat tu: {device['name']}")
+    print(f"Dang chay Monochrome da sac theo beat tu: {device['name']}")
     print("Phim tat: [Right Ctrl] = Doi hieu ung | [Right Alt] = Doi toc do (1..4) | Ctrl+C = Dung")
     print(f"-> Hieu ung: mode = {cur_mode} ({mode_idx + 1}/20) | Toc do: {mode_speeds[cur_mode]}/4 | Do sang: {BRIGHTNESS}/4")
 
@@ -143,19 +143,20 @@ try:
         if tier > 0 and (now >= hold_until or tier > current_tier) and (now - last_send_time >= MIN_CMD_INTERVAL):
             current_tier = tier
             if tier == 3:
-                hue = (hue + random.randint(85, 140)) % 256
+                # Bước nhảy 42..78 giúp quét qua đủ 7 màu cầu vồng thay vì lặp lại 2 màu đối diện
+                hue = (hue + random.randint(42, 78)) % 256
                 hold_until = now + 0.42
             elif tier == 2:
-                hue = (hue + 38) % 256
+                hue = (hue + random.randint(25, 45)) % 256
                 hold_until = now + 0.22
             else:
-                hue = (hue + 20) % 256
+                hue = (hue + 18) % 256
                 hold_until = now + 0.11
             set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode])
             last_send_time = now
 
         elif current_tier > 0 and now >= hold_until and (now - last_send_time >= MIN_CMD_INTERVAL):
-            hue = (hue + 8) % 256
+            hue = (hue + 10) % 256
             set_led(kb, cur_mode, hue, speed=mode_speeds[cur_mode])
             current_tier = 0
             last_send_time = now
