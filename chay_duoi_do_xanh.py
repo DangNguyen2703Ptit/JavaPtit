@@ -1,15 +1,15 @@
 import ctypes
-import re
+import math
 import time
 import hid
 
-# Mã màu bạn chọn: #fe0400 (Đỏ) và #00fe2f (Xanh lá)
-RED = (254, 4, 0)
-GREEN = (0, 254, 47)
+# Hai mã màu bạn yêu cầu:
+RED = (0xFE, 0x04, 0x00)  # #fe0400
+GREEN = (0x00, 0xFE, 0x2F)  # #00fe2f
 
-BRIGHTNESS = 4
-VK_RMENU = 0xA5  # Phím Alt phải: Chỉnh tốc độ chạy đuổi (Nhanh <-> Chậm)
-VK_RCONTROL = 0xA3  # Phím Ctrl phải: Đổi kiểu chạy (Xen kẽ 1-1 <-> Dải 3-3 <-> Sóng hàng)
+MAX_KEY_INDEX = 126
+VK_RCONTROL = 0xA3  # Phím Ctrl phải: Đổi kiểu chạy đuổi (3 kiểu)
+VK_RMENU = 0xA5  # Phím Alt phải: Chỉnh tốc độ chạy (4 mức)
 
 
 def open_kb():
@@ -28,38 +28,55 @@ def send_cmd(h, payload):
     return h.read(64, timeout_ms=50)
 
 
-# Chuyển bàn phím sang chế độ UserLight (mode 16)
-def enter_userlight(h):
+def enter_userlight_mode(h):
+    # Chuyển bàn phím sang chế độ UserLight (mode 16) để nhận màu từng phím
     send_cmd(h, [22, 0, 0, 0, 1, 0, 16])
-    send_cmd(h, [11, 11, 0, 0, 1, 0, 16, BRIGHTNESS, 4, 1, 0, 7, 0, 255, 255])
+    send_cmd(h, [11, 11, 0, 0, 1, 0, 16, 4, 4, 1, 0, 7, 0, 255, 255])
 
 
-# Gửi mảng màu RGB cho 61 phím (183 bytes chia thành 4 gói tin chuẩn chip SDTech)
-def send_custom_colors(h, colors):
-    # Chuyển danh sách 61 tuple (R, G, B) thành mảng phẳng 183 bytes (đệm đủ 240 bytes cho 80 vị trí)
-    rgb_bytes = []
-    for r, g, b in colors:
-        rgb_bytes.extend([r, g, b])
-    rgb_bytes += [0] * (240 - len(rgb_bytes))
+def set_key_colors_infos(h, rgb_list):
+    # Chuyển đổi chính xác từ hàm setKeyColorsInfos trong app.asar
+    count = len(rgb_list)
+    total_bytes = 3 * count
+    num_packets = math.ceil(total_bytes / 56)
 
-    # Gửi 4 gói dữ liệu màu từng phím (mỗi gói chứa 20 phím = 60 bytes RGB)
-    # Header chuẩn của dòng chip 0x36AE: [13, pkt_index, 0, 0, 60, 0]
-    for pkt_idx in range(4):
-        chunk = rgb_bytes[pkt_idx * 60 : (pkt_idx + 1) * 60]
-        send_cmd(h, [13, pkt_idx, 0, 0, 60, 0] + chunk)
+    v = [0] * 1024
+    for i, (r, g, b) in enumerate(rgb_list):
+        v[3 * i + 0] = r
+        v[3 * i + 1] = g
+        v[3 * i + 2] = b
+
+    offset = 0
+    for pkt_idx in range(num_packets):
+        a = [0] * 63
+        a[0] = 18
+        a[1] = 59
+        byte_offset = 56 * pkt_idx
+        a[2] = byte_offset & 0xFF
+        a[3] = (byte_offset >> 8) & 0xFF
+
+        if pkt_idx == num_packets - 1 and (total_bytes % 56) > 0:
+            a[1] = (total_bytes % 56) + 3
+
+        chunk_len = min(56, total_bytes - offset)
+        for j in range(chunk_len):
+            a[j + 7] = v[offset + j]
+
+        send_cmd(h, a)
+        offset += 56
 
 
 kb = open_kb()
 if not kb:
-    print('Khong tim thay ban phim! Hay tat SDTech Options truoc.')
+    print('Khong tim thay ban phim! Hay tat han SDTech Options truoc.')
     exit()
 
 user32 = ctypes.windll.user32
-speeds = [0.40, 0.22, 0.12, 0.06]  # 4 mức tốc độ chạy (giây)
+speeds = [0.35, 0.20, 0.10, 0.05]  # 4 mức tốc độ (giây)
 speed_idx = 1
-pattern_mode = 0  # 0: Xen kẽ 1-1 | 1: Dải 3 phím | 2: Đảo màu toàn bàn phím
+pattern_mode = 0
 
-enter_userlight(kb)
+enter_userlight_mode(kb)
 print('Dang chay hieu ung #fe0400 & #00fe2f chay duoi!')
 print(
     'Phim tat: [Right Ctrl] = Doi kieu chay | [Right Alt] = Doi toc do | Ctrl+C = Dung'
@@ -77,7 +94,7 @@ try:
             now - last_key_time >= 0.25
         ):
             pattern_mode = (pattern_mode + 1) % 3
-            print(f'-> Da doi kieu chay: {pattern_mode + 1}/3')
+            print(f'-> Kieu chay: {pattern_mode + 1}/3')
             last_key_time = now
 
         # Đổi tốc độ bằng Right Alt
@@ -85,30 +102,30 @@ try:
             now - last_key_time >= 0.25
         ):
             speed_idx = (speed_idx + 1) % len(speeds)
-            print(f'-> Toc do chay: muc {speed_idx + 1}/4')
+            print(f'-> Toc do: muc {speed_idx + 1}/4')
             last_key_time = now
 
-        # Tạo bảng màu 61 phím theo kiểu chạy đang chọn
+        # Tạo bảng màu cho 126 vị trí trên ma trận phím
         colors = []
-        for i in range(61):
+        for idx in range(MAX_KEY_INDEX):
             if pattern_mode == 0:
-                # Xen kẽ 1 Đỏ - 1 Xanh lá chạy đuổi giống ảnh mẫu
-                is_green = (i + step) % 2 == 0
+                # Xen kẽ 1 phím Đỏ - 1 phím Xanh lá chạy đuổi liên tục
+                is_green = (idx + step) % 2 == 0
             elif pattern_mode == 1:
-                # Chạy đuổi theo từng cụm 3 phím Đỏ - 3 phím Xanh lá
-                is_green = ((i + step) // 3) % 2 == 0
+                # Chạy đuổi theo cụm 3 phím Đỏ - 3 phím Xanh lá
+                is_green = ((idx + step) // 3) % 2 == 0
             else:
-                # Nhấp nháy đảo pha giữa phím chẵn và phím lẻ
-                is_green = (i % 2) == (step % 2)
+                # Đảo màu nhấp nháy xen kẽ chẵn/lẻ giống bàn cờ trên hình
+                is_green = (idx % 2) == (step % 2)
 
             colors.append(GREEN if is_green else RED)
 
-        send_custom_colors(kb, colors)
+        set_key_colors_infos(kb, colors)
         step += 1
         time.sleep(speeds[speed_idx])
 
 except KeyboardInterrupt:
-    # Khôi phục về hiệu ứng mặc định khi bấm Ctrl+C
+    # Khôi phục lại chế độ đèn mặc định khi bấm Ctrl+C
     send_cmd(kb, [22, 0, 0, 0, 1, 0, 6])
     send_cmd(kb, [11, 11, 0, 0, 1, 0, 6, 4, 4, 1, 0, 7, 255, 255, 255])
     print('\nDa dung va khoi phuc den goc!')
