@@ -6,9 +6,9 @@ asar_path = (
 with open(asar_path, 'rb') as f:
     data = f.read().decode('latin1')
 
-for m in re.finditer(r'webhid_write_command\(', data):
-    start = max(0, m.start() - 100)
-    end = min(len(data), m.end() + 180)
+for m in re.finditer(r'2027', data):
+    start = max(0, m.start() - 150)
+    end = min(len(data), m.end() + 250)
     snippet = ''.join(
         c if 32 <= ord(c) < 127 else ' ' for c in data[start:end]
     )
